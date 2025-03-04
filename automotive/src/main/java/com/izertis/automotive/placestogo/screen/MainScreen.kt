@@ -30,7 +30,7 @@ class MainScreen(carContext: CarContext) : Screen(carContext) {
         currentLocation = location
         invalidate()
     }
-    private val mLocationUpdateHandlerThread = HandlerThread("LocationThread").apply { start() }
+    private val locationUpdateHandlerThread = HandlerThread("LocationThread").apply { start() }
 
     init {
         requestPermissions()
@@ -48,47 +48,9 @@ class MainScreen(carContext: CarContext) : Screen(carContext) {
     override fun onGetTemplate(): Template {
         val itemListBuilder = ItemList.Builder()
         placePort.getPlaces().forEach { place ->
-            val distanceInKilometers = currentLocation?.let { currentLocation ->
-                val locationPlace = Location("").apply {
-                    latitude = place.latitude
-                    longitude = place.longitude
-                }
-                currentLocation.distanceTo(locationPlace) / 1000
-            } ?: 0.0
-
+            val distanceInKilometers = calculateDistanceFromCurrentLocation(place)
             itemListBuilder.addItem(
-                Row.Builder()
-                    .setTitle(place.name)
-                    .addText(
-                        SpannableString(" ").apply {
-                            setSpan(
-                                DistanceSpan.create(
-                                    Distance.create(
-                                        distanceInKilometers.toDouble(),
-                                        Distance.UNIT_KILOMETERS
-                                    )
-                                ), 0, 1, Spannable.SPAN_INCLUSIVE_INCLUSIVE
-                            )
-                        }
-                    )
-                    .setOnClickListener {
-                        carContext.startCarApp(toNavigationIntent(place))
-                    }
-                    .setMetadata(
-                        Metadata.Builder()
-                            .setPlace(
-                                Place.Builder(CarLocation.create(place.latitude, place.longitude))
-                                    .setMarker(
-                                        PlaceMarker.Builder().setColor(
-                                            CarColor.DEFAULT
-                                        ).setLabel(place.id.toString())
-                                            .build()
-                                    )
-                                    .build()
-                            )
-                            .build()
-                    )
-                    .build()
+                createRow(place, distanceInKilometers)
             )
         }
 
@@ -96,6 +58,59 @@ class MainScreen(carContext: CarContext) : Screen(carContext) {
             .setTitle("My favourite places in the world")
             .build()
     }
+
+    private fun createRow(
+        place: com.izertis.automotive.myplaces.domain.Place,
+        distanceInKilometers: Double
+    ) = Row.Builder()
+        .setTitle(place.name)
+        .addText(
+            SpannableString(" ").apply {
+                setSpan(
+                    DistanceSpan.create(
+                        Distance.create(
+                            distanceInKilometers,
+                            Distance.UNIT_KILOMETERS
+                        )
+                    ), 0, 1, Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                )
+            }
+        )
+        .setOnClickListener {
+            carContext.startCarApp(toNavigationIntent(place))
+        }
+        .setMetadata(
+            createMetadata(place)
+        )
+        .build()
+
+    private fun createMetadata(place: com.izertis.automotive.myplaces.domain.Place) =
+        Metadata.Builder()
+            .setPlace(
+                Place.Builder(CarLocation.create(place.latitude, place.longitude))
+                    .setMarker(
+                        PlaceMarker.Builder().setColor(
+                            CarColor.DEFAULT
+                        ).setLabel(place.id.toString())
+                            .build()
+                    )
+                    .build()
+            )
+            .build()
+
+    private fun toNavigationIntent(place: com.izertis.automotive.myplaces.domain.Place): Intent {
+        val uri = "geo:${place.latitude},${place.longitude}".toUri()
+        return Intent(CarContext.ACTION_NAVIGATE, uri)
+    }
+
+    private fun calculateDistanceFromCurrentLocation(place: com.izertis.automotive.myplaces.domain.Place): Double =
+        (currentLocation?.let { currentLocation ->
+            val locationPlace = Location("").apply {
+                latitude = place.latitude
+                longitude = place.longitude
+            }
+            currentLocation.distanceTo(locationPlace) / 1000
+        } ?: 0.0).toDouble()
 
     private fun requestPermissions() {
         val permissions = carContext.packageManager.getPackageInfo(
@@ -129,7 +144,7 @@ class MainScreen(carContext: CarContext) : Screen(carContext) {
                 LOCATION_UPDATE_MIN_INTERVAL_MILLIS.toLong(),
                 LOCATION_UPDATE_MIN_DISTANCE_METER.toFloat(),
                 locationListener,
-                mLocationUpdateHandlerThread.looper
+                locationUpdateHandlerThread.looper
             )
         }
     }
@@ -140,7 +155,3 @@ class MainScreen(carContext: CarContext) : Screen(carContext) {
     }
 }
 
-fun toNavigationIntent(place: com.izertis.automotive.myplaces.domain.Place): Intent {
-    val uri = "geo:${place.latitude},${place.longitude}".toUri()
-    return Intent(CarContext.ACTION_NAVIGATE, uri)
-}
